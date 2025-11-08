@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract APZBridgeBase is ReentrancyGuard, Ownable {
+    // ========== State Variables ==========
+    mapping(bytes32 => bool) public processedTransactions; // جلوگیری از پردازش تکراری
+    mapping(address => bool) public validators; // لیست والیداتورهای مجاز
+    uint256 public bridgeFee; // کارمزد پل (مثلاً 0.1%)
+    uint256 public minBridgeAmount; // حداقل مقدار انتقال
+    uint256 public maxBridgeAmount; // حداکثر مقدار انتقال
+
+    // ========== Events ==========
+    event TokensLocked(
+        address indexed user,
+        uint256 amount,
+        string destinationChain,
+        address destinationAddress
+    );
+    event TokensUnlocked(
+        address indexed user,
+        uint256 amount,
+        string sourceChain
+    );
+
+    // ========== Constructor ==========
+    constructor() {
+        bridgeFee = 10; // 0.1% represented in basis points
+        minBridgeAmount = 1 ether;
+        maxBridgeAmount = 100000 ether;
+        validators[msg.sender] = true; // قرار دادن استقراردهنده به عنوان اولین والیداتور
+    }
+
+    // ========== Core User Functions ==========
+    // قفل کردن توکن‌ها در زنجیره مبدأ
+    function lockTokens(
+        uint256 amount,
+        string calldata destinationChain,
+        address destinationAddress
+    ) external payable nonReentrant {
+        require(amount >= minBridgeAmount, "Amount too low");
+        require(amount <= maxBridgeAmount, "Amount too high");
+
+        // محاسبه کارمزد
+        uint256 fee = (amount * bridgeFee) / 10000;
+        uint256 amountAfterFee = amount - fee;
+
+        // انتقال توکن از کاربر به قرارداد (فرض بر اینکه توکن از استاندارد ERC20 پیروی می‌کند)
+        // require(IERC20(tokenAddress).transferFrom(msg.sender, address(this), amount), "Transfer failed");
+
+        // برای سادگی، این مثال ارزش اتر ارسالی را پردازش می‌کند
+        require(msg.value == amount, "Sent value must equal amount");
+
+        emit TokensLocked(
+            msg.sender,
+            amountAfterFee,
+            destinationChain,
+            destinationAddress
+        );
+    }
+
+    // آزاد کردن توکن‌ها در زنجیره مقصد (فراخوانی توسط رلایر/والیداتور)
+    function unlockTokens(
+        address user,
+        uint256 amount,
+        string calldata sourceChain,
+        bytes32 sourceTxHash,
+        bytes[] calldata signatures
+    ) external nonReentrant {
+        // بررسی مجوز با استفاده از امضاهای والیداتورها
+        require(_isValidatedTransaction(user, amount, sourceChain, sourceTxHash, signatures), "Invalid signatures");
+
+        // جلوگیری از حمله Replay
+        bytes32 unlockHash = keccak256(abi.encodePacked(sourceTxHash));
+        require(!processedTransactions[unlockHash], "Transaction already processed");
+        processedTransactions[unlockHash] = true;
+
+        // انتقال دارایی به کاربر در زنجیره مقصد
+        (bool success, ) = user.call{value: amount}("");
+        require(success, "Transfer failed");
+
+        emit TokensUnlocked(user, amount, sourceChain);
+    }
+
+    // ========== Validator & Admin Functions ==========
+    function addValidator(address validator) external onlyOwner {
+        validators[validator] = true;
+    }
+
+    function setBridgeFee(uint256 newFee) external onlyOwner {
+        require(newFee <= 100, "Fee too high"); // حداکثر ۱٪
+        bridgeFee = newFee;
+    }
+
+    // ========== Internal Logic ==========
+    // تابع داخلی برای تأیید اعتبار تراکنش با امضاهای والیداتورها
+    function _isValidatedTransaction(
+        address user,
+        uint256 amount,
+        string memory sourceChain,
+        bytes32 sourceTxHash,
+        bytes[] memory signatures
+    ) internal view returns (bool) {
+        bytes32 messageHash = keccak256(abi.encodePacked(user, amount, sourceChain, sourceTxHash));
+        bytes32 ethSignedMessageHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
+
+        address[] memory signers = new address[](signatures.length);
+        for (uint i = 0; i < signatures.length; i++) {
+            address signer = _recoverSigner(ethSignedMessageHash, signatures[i]);
+            if (!validators[signer]) {
+                return false;
+            }
+            // جلوگیری از امضاهای تکراری
+            for (uint j = 0; j < i; j++) {
+                if (signers[j] == signer) {
+                    return false;
+                }
+            }
+            signers[i] = signer;
+        }
+        return signatures.length >= 2; // نیاز به حداقل ۲ امضا
+    }
+
+    // بازیابی آدرس امضاکننده
+    function _recoverSigner(bytes32 messageHash, bytes memory signature) internal pure returns (address) {
+        (bytes32 r, bytes32 s, uint8 v) = _splitSignature(signature);
+        return ecrecover(messageHash, v, r, s);
+    }
+
+    function _splitSignature(bytes memory signature) internal pure returns (bytes32 r, bytes32 s, uint8 v) {
+        require(signature.length == 65, "Invalid signature length");
+        assembly {
+            r := mload(add(signature, 32))
+            s := mload(add(signature, 64))
+            v := byte(0, mload(add(signature, 96)))
+        }
+        if (v < 27) v += 27;
+    }
+}
