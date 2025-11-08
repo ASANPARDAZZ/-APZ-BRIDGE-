@@ -1,0 +1,35 @@
+apz-cross-chain-bridge/
+├── 📁 contracts/
+│   ├── 📁 ethereum/
+│   │   ├── APZBridge.sol
+│   │   └── APZToken.sol
+│   ├── 📁 apz-chain/
+│   │   ├── APZBridge.sol
+│   │   └── APZToken.sol
+│   └── 📁 interfaces/
+│       ├── IBridge.sol
+│       └── IToken.sol
+├── 📁 backend/
+│   ├── 📁 relayers/
+│   │   ├── ethereum-relayer.ts
+│   │   ├── apz-relayer.ts
+│   │   └── bsc-relayer.ts
+│   ├── 📁 services/
+│   │   ├── bridge-service.ts
+│   │   ├── monitoring-service.ts
+│   │   └── notification-service.ts
+│   └── 📁 database/
+│       ├── migrations/
+│       └── models/
+├── 📁 frontend/
+│   ├── 📁 src/
+│   │   ├── 📁 components/
+│   │   ├── 📁 hooks/
+│   │   └── 📁 utils/
+│   └── package.json
+├── 📁 monitoring/
+│   ├── prometheus.yml
+│   └── grafana-dashboard.json
+└── 📁 scripts/
+    ├── deploy.sh
+    └── verify.sh
