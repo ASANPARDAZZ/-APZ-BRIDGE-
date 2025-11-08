@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # Bridge Relayers
+  apz-relayer:
+    build: ./backend
+    command: ["node", "relayers/apz-relayer.js"]
+    environment:
+      RPC_URL: https://rpc.apzchain.org
+      KAFKA_BROKERS: kafka:9092
+      BRIDGE_ADDRESS: ${APZ_BRIDGE_ADDRESS}
+    depends_on:
+      - kafka
+      - postgres
+
+  eth-relayer:
+    build: ./backend
+    command: ["node", "relayers/ethereum-relayer.js"]
+    environment:
+      RPC_URL: https://mainnet.infura.io/v3/${INFURA_KEY}
+      KAFKA_BROKERS: kafka:9092
+      BRIDGE_ADDRESS: ${ETH_BRIDGE_ADDRESS}
+    depends_on:
+      - kafka
+
+  # Frontend
+  bridge-frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      VUE_APP_BRIDGE_API: http://localhost:8080
+
+  # API
+  bridge-api:
+    build: ./backend
+    command: ["node", "services/bridge-api.js"]
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgresql://user:pass@postgres:5432/bridge
+      KAFKA_BROKERS: kafka:9092
+
+  # Database
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: bridge
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    environment:
+      KAFKA_NUM_PARTITIONS: 3
+    ports:
+      - "9092:9092"
+
+volumes:
+  postgres_data:
