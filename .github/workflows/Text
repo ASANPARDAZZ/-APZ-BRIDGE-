@@ -1,0 +1,8 @@
+APZ Cross-Chain Bridge Architecture
+├── 📁 Frontend (Web DApp)
+├── 📁 Bridge Core
+│   ├── 📁 Smart Contracts
+│   ├── 📁 Relayers
+│   └── 📁 Validators
+├── 📁 Monitoring & Analytics
+└── 📁 Security Modules
